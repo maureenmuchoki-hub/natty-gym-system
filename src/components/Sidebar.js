@@ -25,6 +25,11 @@ export default function Sidebar({ user }) {
     router.refresh();
   }
 
+  const navItems =
+    user.role === "admin"
+      ? [...NAV_ITEMS, { href: "/staff", label: "Staff" }]
+      : NAV_ITEMS;
+
   return (
     <aside className="w-60 shrink-0 bg-[var(--ng-surface)] border-r border-[var(--ng-border)] min-h-screen flex flex-col">
       <div className="px-6 py-6">
@@ -32,7 +37,7 @@ export default function Sidebar({ user }) {
       </div>
 
       <nav className="flex-1 px-3 space-y-0.5">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
@@ -53,12 +58,20 @@ export default function Sidebar({ user }) {
       <div className="px-6 py-5 border-t border-[var(--ng-border)]">
         <p className="text-sm text-[var(--ng-text)] font-medium truncate">{user.name}</p>
         <p className="text-xs text-[var(--ng-text-muted)] mb-3 capitalize">{user.role}</p>
-        <button
-          onClick={handleLogout}
-          className="text-xs text-[var(--ng-text-muted)] hover:text-[var(--ng-accent)] transition-colors"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/account"
+            className="text-xs text-[var(--ng-text-muted)] hover:text-[var(--ng-accent)] transition-colors"
+          >
+            Account
+          </Link>
+          <button
+            onClick={handleLogout}
+            className="text-xs text-[var(--ng-text-muted)] hover:text-[var(--ng-accent)] transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </aside>
   );
