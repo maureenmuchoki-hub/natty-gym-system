@@ -112,4 +112,4 @@ src/
 Deployed on [Vercel](https://vercel.com), connected directly to this GitHub repo — every push to `main` triggers a new deployment automatically. Environment variables (`MONGODB_URI`, `JWT_SECRET`) are set in the Vercel project settings, not committed to the repo.
 
 ---
-Developed by NMaureen Muchoki who previously worked for Natty Gym.
+Developed by Maureen Muchoki who previously worked for Natty Gym.
