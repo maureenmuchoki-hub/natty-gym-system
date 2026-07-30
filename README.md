@@ -13,6 +13,8 @@ Test login:
 ## Features
 
 - **Staff authentication** — register/login/logout with JWT sessions stored in httpOnly cookies, role-based access (admin/staff)
+- **Staff management** — admins can add new staff accounts, reset any staff member's password, and activate/deactivate accounts, all from a dedicated Staff page
+- **Account settings** — any logged-in user can change their own password
 - **Members** — add, view, edit, and deactivate gym members per branch
 - **Memberships & payments** — enroll a member into a plan (daily, weekly, bi-weekly, monthly, quarterly, half-yearly, yearly, student, kids); expiry is calculated automatically and a payment record is created in the same step; memberships can be cancelled
 - **Check-in / check-out** — front-desk attendance tracking that only allows check-in for members with an active, unexpired membership
@@ -57,8 +59,12 @@ src/
       shop/
       revenue/
       branches/
+      staff/            # admin-only staff management
+      account/          # change own password
     api/                 # all backend routes
       auth/
+        change-password/
+      users/             # staff account management (admin only)
       members/
       memberships/
       attendance/
@@ -112,4 +118,5 @@ src/
 Deployed on [Vercel](https://vercel.com), connected directly to this GitHub repo — every push to `main` triggers a new deployment automatically. Environment variables (`MONGODB_URI`, `JWT_SECRET`) are set in the Vercel project settings, not committed to the repo.
 
 ---
-Developed by Maureen Muchoki who previously worked for Natty Gym.
+
+Developed by Maureen Muchoki, who previously worked for Natty Gym.
