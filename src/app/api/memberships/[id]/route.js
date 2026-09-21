@@ -1,52 +1,62 @@
-import { NextResponse } from "next/server";
-import dbConnect from "@/lib/dbConnect";
-import Membership from "@/models/Membership";
-import { getAuthUser, requireRole } from "@/lib/requireAuth";
+import mongoose from "mongoose";
 
-// PATCH /api/memberships/:id — update a membership's status (e.g. cancel it)
-export async function PATCH(request, { params }) {
-  try {
-    const user = await getAuthUser();
-    if (!requireRole(user, ["admin", "staff"])) {
-      return NextResponse.json(
-        { success: false, message: "Not authorized" },
-        { status: 401 }
-      );
-    }
+const CreditNoteSchema = new mongoose.Schema(
+  {
+    days: { type: Number, required: true },
+    reason: { type: String },
+    appliedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
-    await dbConnect();
-    const { id } = await params;
-    const { status } = await request.json();
+const MembershipSchema = new mongoose.Schema(
+  {
+    member: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Member",
+      required: true,
+    },
+    plan: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MembershipPlan",
+      required: true,
+    },
+    branch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+    },
+    startDate: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    endDate: {
+      type: Date,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["active", "expired", "cancelled"],
+      default: "active",
+    },
+    autoRenew: {
+      type: Boolean,
+      default: false,
+    },
+    // Days credited back to this membership (e.g. long absence)
+    creditedDays: {
+      type: Number,
+      default: 0,
+    },
+    creditNotes: {
+      type: [CreditNoteSchema],
+      default: [],
+    },
+  },
+  { timestamps: true }
+);
 
-    const allowedStatuses = ["active", "expired", "cancelled"];
-    if (!allowedStatuses.includes(status)) {
-      return NextResponse.json(
-        { success: false, message: "Invalid status value" },
-        { status: 400 }
-      );
-    }
+MembershipSchema.index({ member: 1, status: 1 });
 
-    const membership = await Membership.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    )
-      .populate("member")
-      .populate("plan")
-      .populate("branch");
-
-    if (!membership) {
-      return NextResponse.json(
-        { success: false, message: "Membership not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ success: true, membership });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, message: "Failed to update membership", error: error.message },
-      { status: 500 }
-    );
-  }
-}
+export default mongoose.models.Membership || mongoose.model("Membership", MembershipSchema);

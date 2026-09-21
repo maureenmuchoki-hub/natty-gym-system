@@ -6,11 +6,12 @@ import Payment from "@/models/Payment";
 import Member from "@/models/Member";
 import { getAuthUser, requireRole } from "@/lib/requireAuth";
 
-// GET /api/memberships — list memberships (optionally filter by member or branch)
+const ALLOWED_ROLES = ["admin", "staff", "accountant"];
+
 export async function GET(request) {
   try {
     const user = await getAuthUser();
-    if (!requireRole(user, ["admin", "staff"])) {
+    if (!requireRole(user, ALLOWED_ROLES)) {
       return NextResponse.json(
         { success: false, message: "Not authorized" },
         { status: 401 }
@@ -44,11 +45,10 @@ export async function GET(request) {
   }
 }
 
-// POST /api/memberships — enroll a member into a plan + record the payment for it
 export async function POST(request) {
   try {
     const user = await getAuthUser();
-    if (!requireRole(user, ["admin", "staff"])) {
+    if (!requireRole(user, ALLOWED_ROLES)) {
       return NextResponse.json(
         { success: false, message: "Not authorized" },
         { status: 401 }
@@ -83,8 +83,31 @@ export async function POST(request) {
       );
     }
 
-    // Calculate start/end dates based on the plan's durationDays
-    const start = startDate ? new Date(startDate) : new Date();
+    const now = new Date();
+
+    // Smart renewal: if this member already has an active membership that hasn't
+    // expired yet, chain the new period to start when it ends — instead of
+    // wasting the days they already paid for by starting from today.
+    let chainedFrom = null;
+    let start;
+
+    if (startDate) {
+      start = new Date(startDate);
+    } else {
+      const currentActive = await Membership.findOne({
+        member: memberId,
+        status: "active",
+        endDate: { $gte: now },
+      }).sort({ endDate: -1 });
+
+      if (currentActive) {
+        start = new Date(currentActive.endDate);
+        chainedFrom = currentActive.endDate;
+      } else {
+        start = now;
+      }
+    }
+
     const end = new Date(start);
     end.setDate(end.getDate() + plan.durationDays);
 
@@ -114,7 +137,7 @@ export async function POST(request) {
       .populate("branch");
 
     return NextResponse.json(
-      { success: true, membership: populatedMembership, payment },
+      { success: true, membership: populatedMembership, payment, renewed: !!chainedFrom, chainedFrom },
       { status: 201 }
     );
   } catch (error) {

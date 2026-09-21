@@ -1,5 +1,14 @@
 import mongoose from "mongoose";
 
+const CreditNoteSchema = new mongoose.Schema(
+  {
+    days: { type: Number, required: true },
+    reason: { type: String },
+    appliedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const MembershipSchema = new mongoose.Schema(
   {
     member: {
@@ -35,11 +44,19 @@ const MembershipSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Days credited back to this membership (e.g. long absence)
+    creditedDays: {
+      type: Number,
+      default: 0,
+    },
+    creditNotes: {
+      type: [CreditNoteSchema],
+      default: [],
+    },
   },
   { timestamps: true }
 );
 
-// Convenience index for quickly finding a member's current active membership
 MembershipSchema.index({ member: 1, status: 1 });
 
 export default mongoose.models.Membership || mongoose.model("Membership", MembershipSchema);

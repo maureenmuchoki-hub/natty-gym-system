@@ -89,6 +89,7 @@ export default function AddStaffForm({ branches }) {
             className="w-full bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-3 py-2 text-sm text-[var(--ng-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ng-accent)]"
           >
             <option value="staff">Staff</option>
+            <option value="accountant">Accountant</option>
             <option value="admin">Admin</option>
           </select>
         </Field>

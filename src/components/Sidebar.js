@@ -4,16 +4,24 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "./Logo";
 
-const NAV_ITEMS = [
+const BASE_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/members", label: "Members" },
   { href: "/check-in", label: "Check-in" },
   { href: "/memberships", label: "Memberships" },
   { href: "/register", label: "Register" },
   { href: "/shop", label: "Shop" },
-  { href: "/revenue", label: "Revenue" },
   { href: "/branches", label: "Branches" },
 ];
+
+// Revenue and Peak Hours are money/analytics views — staff don't see these
+const MONEY_ITEMS = [
+  { href: "/revenue", label: "Revenue" },
+  { href: "/peak-hours", label: "Peak Hours" },
+];
+
+// Staff account management — owner/admin only
+const ADMIN_ITEMS = [{ href: "/staff", label: "Staff" }];
 
 export default function Sidebar({ user }) {
   const pathname = usePathname();
@@ -25,10 +33,13 @@ export default function Sidebar({ user }) {
     router.refresh();
   }
 
-  const navItems =
-    user.role === "admin"
-      ? [...NAV_ITEMS, { href: "/staff", label: "Staff" }]
-      : NAV_ITEMS;
+  let navItems = [...BASE_ITEMS];
+  if (user.role === "admin" || user.role === "accountant") {
+    navItems = [...navItems, ...MONEY_ITEMS];
+  }
+  if (user.role === "admin") {
+    navItems = [...navItems, ...ADMIN_ITEMS];
+  }
 
   return (
     <aside className="w-60 shrink-0 bg-[var(--ng-surface)] border-r border-[var(--ng-border)] min-h-screen flex flex-col">

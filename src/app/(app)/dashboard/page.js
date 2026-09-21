@@ -6,12 +6,15 @@ import Payment from "@/models/Payment";
 import Sale from "@/models/Sale";
 import Product from "@/models/Product";
 import Branch from "@/models/Branch";
+import MembershipPlan from "@/models/MembershipPlan";
 
 export default async function DashboardPage() {
   await dbConnect();
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const threeDaysFromNow = new Date(now);
+  threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
   const [
     activeMembersCount,
@@ -23,6 +26,7 @@ export default async function DashboardPage() {
     allTimePayments,
     allTimeSales,
     recentCheckIns,
+    expiringSoon,
   ] = await Promise.all([
     Member.countDocuments({ isActive: true }),
     Membership.countDocuments({ status: "active", endDate: { $gte: now } }),
@@ -38,6 +42,15 @@ export default async function DashboardPage() {
       .sort({ checkInTime: -1 })
       .limit(5)
       .lean(),
+    Membership.find({
+      status: "active",
+      endDate: { $gte: now, $lte: threeDaysFromNow },
+    })
+      .populate("member")
+      .populate("plan")
+      .populate("branch")
+      .sort({ endDate: 1 })
+      .lean(),
   ]);
 
   const monthRevenue =
@@ -49,11 +62,39 @@ export default async function DashboardPage() {
     allTimeSales.reduce((sum, s) => sum + s.totalAmount, 0);
 
   const checkIns = JSON.parse(JSON.stringify(recentCheckIns));
+  const expiring = JSON.parse(JSON.stringify(expiringSoon));
 
   return (
     <div>
       <h1 className="font-display text-4xl text-[var(--ng-accent)] mb-1">Dashboard</h1>
       <p className="text-sm text-[var(--ng-text-muted)] mb-8">Overview across all branches.</p>
+
+      {/* Expiring soon alert banner */}
+      {expiring.length > 0 && (
+        <div className="bg-amber-950/30 border border-amber-800 rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display text-xl text-amber-400">
+              {expiring.length} membership{expiring.length === 1 ? "" : "s"} expiring within 3
+              days
+            </h2>
+          </div>
+          <ul className="space-y-1.5">
+            {expiring.map((m) => (
+              <li key={m._id} className="flex items-center justify-between text-sm">
+                <span className="text-[var(--ng-text)]">
+                  {m.member?.firstName} {m.member?.lastName}{" "}
+                  <span className="text-[var(--ng-text-muted)]">
+                    · {m.plan?.name} · {m.branch?.name}
+                  </span>
+                </span>
+                <span className="text-amber-400 font-medium">
+                  Expires {new Date(m.endDate).toLocaleDateString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
@@ -61,15 +102,10 @@ export default async function DashboardPage() {
         <StatCard label="Active memberships" value={activeMembershipsCount} />
         <StatCard label="Checked in now" value={checkedInNow} accent />
         <StatCard label="Revenue this month" value={`KSh ${monthRevenue.toLocaleString()}`} />
-        <StatCard
-          label="Low stock items"
-          value={lowStockCount}
-          warn={lowStockCount > 0}
-        />
+        <StatCard label="Low stock items" value={lowStockCount} warn={lowStockCount > 0} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5">
-        {/* Currently checked in */}
         <div className="bg-[var(--ng-surface)] border border-[var(--ng-border)] rounded-xl p-6">
           <h2 className="font-display text-2xl text-[var(--ng-text)] mb-4">
             Currently checked in
@@ -99,7 +135,6 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* All-time summary */}
         <div className="bg-[var(--ng-surface)] border border-[var(--ng-border)] rounded-xl p-6">
           <h2 className="font-display text-2xl text-[var(--ng-text)] mb-4">All-time revenue</h2>
           <p className="font-display text-4xl text-[var(--ng-accent)] mb-1">

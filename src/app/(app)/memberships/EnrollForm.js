@@ -25,6 +25,8 @@ export default function EnrollForm({ members, branches, plans }) {
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const selectedPlan = useMemo(() => plans.find((p) => p._id === planId), [plans, planId]);
+
   const plansForBranch = useMemo(
     () => plans.filter((p) => p.branch === branchId || p.branch?._id === branchId),
     [plans, branchId]
@@ -58,7 +60,16 @@ export default function EnrollForm({ members, branches, plans }) {
         return;
       }
 
-      setMessage({ type: "success", text: "Member enrolled and payment recorded." });
+      if (data.renewed) {
+        const startDate = new Date(data.membership.startDate).toLocaleDateString();
+        setMessage({
+          type: "success",
+          text: `Renewed early — this member's current membership is still active, so the new period starts on ${startDate} once it ends. No days lost.`,
+        });
+      } else {
+        setMessage({ type: "success", text: "Member enrolled and payment recorded." });
+      }
+
       setTransactionId("");
       router.refresh();
     } catch {
@@ -118,6 +129,16 @@ export default function EnrollForm({ members, branches, plans }) {
             ))}
           </select>
         </Field>
+
+        {/* Explicit price confirmation to prevent mis-entry */}
+        {selectedPlan && (
+          <div className="bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-4 py-3 flex items-center justify-between">
+            <span className="text-xs text-[var(--ng-text-muted)]">Amount to charge</span>
+            <span className="font-display text-2xl text-[var(--ng-accent)]">
+              KSh {selectedPlan.price.toLocaleString()}
+            </span>
+          </div>
+        )}
 
         <Field label="Payment method">
           <select

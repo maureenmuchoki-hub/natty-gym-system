@@ -20,6 +20,8 @@ const MemberSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: true,
+      unique: true,
+      trim: true,
     },
     dateOfBirth: {
       type: Date,
@@ -42,7 +44,6 @@ const MemberSchema = new mongoose.Schema(
     emergencyContactPhone: {
       type: String,
     },
-    // For student / kids packages requiring verification documents
     verificationDocumentUrl: {
       type: String,
     },

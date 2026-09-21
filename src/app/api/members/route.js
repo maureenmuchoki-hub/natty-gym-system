@@ -3,11 +3,12 @@ import dbConnect from "@/lib/dbConnect";
 import Member from "@/models/Member";
 import { getAuthUser, requireRole } from "@/lib/requireAuth";
 
-// GET /api/members — list members (optionally filter by branch)
+const ALLOWED_ROLES = ["admin", "staff", "accountant"];
+
 export async function GET(request) {
   try {
     const user = await getAuthUser();
-    if (!requireRole(user, ["admin", "staff"])) {
+    if (!requireRole(user, ALLOWED_ROLES)) {
       return NextResponse.json(
         { success: false, message: "Not authorized" },
         { status: 401 }
@@ -31,11 +32,10 @@ export async function GET(request) {
   }
 }
 
-// POST /api/members — create a new member
 export async function POST(request) {
   try {
     const user = await getAuthUser();
-    if (!requireRole(user, ["admin", "staff"])) {
+    if (!requireRole(user, ALLOWED_ROLES)) {
       return NextResponse.json(
         { success: false, message: "Not authorized" },
         { status: 401 }
@@ -65,11 +65,23 @@ export async function POST(request) {
       );
     }
 
+    const existing = await Member.findOne({ phone: phone.trim() });
+    if (existing) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `A member with this phone number already exists: ${existing.firstName} ${existing.lastName}. If they're renewing, use the Memberships page to enroll them again instead of creating a new member.`,
+          existingMemberId: existing._id,
+        },
+        { status: 409 }
+      );
+    }
+
     const member = await Member.create({
       firstName,
       lastName,
       email,
-      phone,
+      phone: phone.trim(),
       dateOfBirth,
       gender,
       branch,
