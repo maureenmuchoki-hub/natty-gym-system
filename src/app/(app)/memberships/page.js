@@ -14,7 +14,10 @@ export default async function MembershipsPage() {
 
   await dbConnect();
 
-  const members = await Member.find({ isActive: true }).sort({ firstName: 1 }).lean();
+  const members = await Member.find({ isActive: true })
+    .populate("branch")
+    .sort({ firstName: 1 })
+    .lean();
   const branches = await Branch.find({ isActive: true }).sort({ name: 1 }).lean();
   const plans = await MembershipPlan.find({ isActive: true }).sort({ price: 1 }).lean();
 
@@ -62,7 +65,7 @@ export default async function MembershipsPage() {
           plans={data.plans}
           currentUserRole={user.role}
         />
-        <EnrollForm members={data.members} branches={data.branches} plans={data.plans} />
+        <EnrollForm members={data.members} plans={data.plans} />
       </div>
     </div>
   );

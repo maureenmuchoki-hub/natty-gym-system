@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Receipt from "@/components/Receipt";
 
 const PLAN_TYPE_LABELS = {
   daily: "Daily",
@@ -15,29 +16,41 @@ const PLAN_TYPE_LABELS = {
   kids: "Kids",
 };
 
-export default function EnrollForm({ members, branches, plans }) {
+export default function EnrollForm({ members, plans }) {
   const router = useRouter();
   const [memberId, setMemberId] = useState(members[0]?._id || "");
-  const [branchId, setBranchId] = useState(branches[0]?._id || "");
   const [planId, setPlanId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [transactionId, setTransactionId] = useState("");
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+
+  const selectedMember = useMemo(
+    () => members.find((m) => m._id === memberId),
+    [members, memberId]
+  );
+
+  const memberBranchId = selectedMember?.branch?._id;
+
+  const plansForMember = useMemo(
+    () => plans.filter((p) => (p.branch?._id || p.branch) === memberBranchId),
+    [plans, memberBranchId]
+  );
 
   const selectedPlan = useMemo(() => plans.find((p) => p._id === planId), [plans, planId]);
 
-  const plansForBranch = useMemo(
-    () => plans.filter((p) => p.branch === branchId || p.branch?._id === branchId),
-    [plans, branchId]
-  );
+  function handleMemberChange(id) {
+    setMemberId(id);
+    setPlanId(""); // plan list depends on the member's branch, so reset it
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setMessage(null);
 
     if (!planId) {
-      setMessage({ type: "error", text: "Pick a plan for this branch first." });
+      setMessage({ type: "error", text: "Pick a plan first." });
       return;
     }
 
@@ -60,11 +73,27 @@ export default function EnrollForm({ members, branches, plans }) {
         return;
       }
 
+      const m = data.membership;
+      setReceiptData({
+        title: data.renewed ? "Membership renewal" : "Membership enrollment",
+        branchName: m.branch?.name || "",
+        date: data.payment.paidAt,
+        lines: [
+          { label: "Member", value: `${m.member?.firstName} ${m.member?.lastName}` },
+          { label: "Plan", value: m.plan?.name },
+          { label: "Valid from", value: new Date(m.startDate).toLocaleDateString() },
+          { label: "Valid until", value: new Date(m.endDate).toLocaleDateString() },
+        ],
+        total: data.payment.amount,
+        paymentMethod: data.payment.method,
+        transactionId: data.payment.transactionId,
+      });
+
       if (data.renewed) {
-        const startDate = new Date(data.membership.startDate).toLocaleDateString();
+        const startDate = new Date(m.startDate).toLocaleDateString();
         setMessage({
           type: "success",
-          text: `Renewed early — this member's current membership is still active, so the new period starts on ${startDate} once it ends. No days lost.`,
+          text: `Renewed early — their current membership is still active, so the new period starts on ${startDate} once it ends. No days lost.`,
         });
       } else {
         setMessage({ type: "success", text: "Member enrolled and payment recorded." });
@@ -87,7 +116,7 @@ export default function EnrollForm({ members, branches, plans }) {
         <Field label="Member">
           <select
             value={memberId}
-            onChange={(e) => setMemberId(e.target.value)}
+            onChange={(e) => handleMemberChange(e.target.value)}
             className="w-full bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-3 py-2 text-sm text-[var(--ng-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ng-accent)]"
           >
             {members.map((m) => (
@@ -98,39 +127,37 @@ export default function EnrollForm({ members, branches, plans }) {
           </select>
         </Field>
 
-        <Field label="Branch">
-          <select
-            value={branchId}
-            onChange={(e) => {
-              setBranchId(e.target.value);
-              setPlanId("");
-            }}
-            className="w-full bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-3 py-2 text-sm text-[var(--ng-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ng-accent)]"
-          >
-            {branches.map((b) => (
-              <option key={b._id} value={b._id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {/* Branch is shown, not chosen — locked to the member's registered branch */}
+        {selectedMember && (
+          <div className="bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-4 py-2.5 flex items-center justify-between">
+            <span className="text-xs text-[var(--ng-text-muted)]">Branch</span>
+            <span className="text-sm text-[var(--ng-text)]">
+              {selectedMember.branch?.name || "No branch on file"}
+            </span>
+          </div>
+        )}
 
         <Field label="Plan">
           <select
             value={planId}
             onChange={(e) => setPlanId(e.target.value)}
-            className="w-full bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-3 py-2 text-sm text-[var(--ng-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ng-accent)]"
+            disabled={plansForMember.length === 0}
+            className="w-full bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-3 py-2 text-sm text-[var(--ng-text)] focus:outline-none focus:ring-2 focus:ring-[var(--ng-accent)] disabled:opacity-50"
           >
             <option value="">Select a plan...</option>
-            {plansForBranch.map((p) => (
+            {plansForMember.map((p) => (
               <option key={p._id} value={p._id}>
                 {PLAN_TYPE_LABELS[p.type] || p.name} — KSh {p.price.toLocaleString()}
               </option>
             ))}
           </select>
+          {plansForMember.length === 0 && selectedMember && (
+            <p className="text-xs text-red-400 mt-1">
+              No plans found for {selectedMember.branch?.name || "this member's branch"}.
+            </p>
+          )}
         </Field>
 
-        {/* Explicit price confirmation to prevent mis-entry */}
         {selectedPlan && (
           <div className="bg-[var(--ng-bg)] border border-[var(--ng-border)] rounded-lg px-4 py-3 flex items-center justify-between">
             <span className="text-xs text-[var(--ng-text-muted)]">Amount to charge</span>
@@ -176,12 +203,25 @@ export default function EnrollForm({ members, branches, plans }) {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || plansForMember.length === 0}
           className="w-full bg-[var(--ng-accent)] text-[#151511] font-semibold rounded-lg py-2.5 text-sm hover:bg-[var(--ng-accent-dim)] transition-colors disabled:opacity-60"
         >
           {loading ? "Enrolling..." : "Enroll & record payment"}
         </button>
       </form>
+
+      {receiptData && (
+        <Receipt
+          title={receiptData.title}
+          branchName={receiptData.branchName}
+          date={receiptData.date}
+          lines={receiptData.lines}
+          total={receiptData.total}
+          paymentMethod={receiptData.paymentMethod}
+          transactionId={receiptData.transactionId}
+          onClose={() => setReceiptData(null)}
+        />
+      )}
     </div>
   );
 }

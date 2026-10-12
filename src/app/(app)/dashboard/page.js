@@ -12,6 +12,7 @@ export default async function DashboardPage() {
   await dbConnect();
 
   const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const threeDaysFromNow = new Date(now);
   threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
@@ -21,6 +22,8 @@ export default async function DashboardPage() {
     activeMembershipsCount,
     checkedInNow,
     lowStockCount,
+    todayPayments,
+    todaySales,
     monthPayments,
     monthSales,
     allTimePayments,
@@ -32,6 +35,10 @@ export default async function DashboardPage() {
     Membership.countDocuments({ status: "active", endDate: { $gte: now } }),
     Attendance.countDocuments({ checkOutTime: null }),
     Product.countDocuments({ isActive: true, stock: { $lte: 5 } }),
+    Payment.find({ status: "completed", paidAt: { $gte: startOfToday } })
+      .populate("branch")
+      .lean(),
+    Sale.find({ createdAt: { $gte: startOfToday } }).populate("branch").lean(),
     Payment.find({ status: "completed", paidAt: { $gte: startOfMonth } }).lean(),
     Sale.find({ createdAt: { $gte: startOfMonth } }).lean(),
     Payment.find({ status: "completed" }).lean(),
@@ -53,6 +60,33 @@ export default async function DashboardPage() {
       .lean(),
   ]);
 
+  const METHOD_LABELS = { cash: "Cash", mpesa: "M-Pesa", card: "Card", bank_transfer: "Bank Transfer" };
+
+  const todayTxns = [
+    ...todayPayments.map((p) => ({
+      amount: p.amount,
+      method: p.method,
+      branchName: p.branch?.name || "Unknown",
+    })),
+    ...todaySales.map((s) => ({
+      amount: s.totalAmount,
+      method: s.paymentMethod,
+      branchName: s.branch?.name || "Unknown",
+    })),
+  ];
+
+  const todayTotal = todayTxns.reduce((sum, t) => sum + t.amount, 0);
+
+  const todayByMethod = {};
+  const todayByBranch = {};
+  for (const t of todayTxns) {
+    const methodLabel = METHOD_LABELS[t.method] || t.method;
+    todayByMethod[methodLabel] = (todayByMethod[methodLabel] || 0) + t.amount;
+    todayByBranch[t.branchName] = (todayByBranch[t.branchName] || 0) + t.amount;
+  }
+  const todayByMethodSorted = Object.entries(todayByMethod).sort((a, b) => b[1] - a[1]);
+  const todayByBranchSorted = Object.entries(todayByBranch).sort((a, b) => b[1] - a[1]);
+
   const monthRevenue =
     monthPayments.reduce((sum, p) => sum + p.amount, 0) +
     monthSales.reduce((sum, s) => sum + s.totalAmount, 0);
@@ -68,6 +102,63 @@ export default async function DashboardPage() {
     <div>
       <h1 className="font-display text-4xl text-[var(--ng-accent)] mb-1">Dashboard</h1>
       <p className="text-sm text-[var(--ng-text-muted)] mb-8">Overview across all branches.</p>
+
+      {/* Today's Sales — for closing out the till at end of day */}
+      <div className="bg-[var(--ng-surface)] border border-[var(--ng-accent-dim)] rounded-xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-2xl text-[var(--ng-text)]">Today's sales</h2>
+            <p className="text-xs text-[var(--ng-text-muted)]">
+              {now.toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}{" "}
+              — for closing out at end of day
+            </p>
+          </div>
+          <p className="font-display text-4xl text-[var(--ng-accent)]">
+            KSh {todayTotal.toLocaleString()}
+          </p>
+        </div>
+
+        {todayTxns.length === 0 ? (
+          <p className="text-sm text-[var(--ng-text-muted)]">No sales recorded yet today.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-6">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-[var(--ng-text-muted)] mb-2">
+                By payment method
+              </p>
+              <ul className="space-y-1.5">
+                {todayByMethodSorted.map(([method, amount]) => (
+                  <li key={method} className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--ng-text)]">{method}</span>
+                    <span className="text-[var(--ng-accent)] font-medium">
+                      KSh {amount.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-[var(--ng-text-muted)] mb-2">
+                By branch
+              </p>
+              <ul className="space-y-1.5">
+                {todayByBranchSorted.map(([branchName, amount]) => (
+                  <li key={branchName} className="flex items-center justify-between text-sm">
+                    <span className="text-[var(--ng-text)]">{branchName}</span>
+                    <span className="text-[var(--ng-text-muted)]">
+                      KSh {amount.toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Expiring soon alert banner */}
       {expiring.length > 0 && (

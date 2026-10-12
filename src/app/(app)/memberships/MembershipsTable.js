@@ -2,6 +2,7 @@
 
 import { useState, useMemo, Fragment } from "react";
 import { useRouter } from "next/navigation";
+import Receipt from "@/components/Receipt";
 
 const METHOD_LABELS = {
   cash: "Cash",
@@ -22,7 +23,9 @@ const PLAN_TYPE_LABELS = {
   kids: "Kids",
 };
 
-const TABS = ["All", "Active", "Expired", "Cancelled"];
+const TABS = ["All", "Active", "Upcoming", "Daily", "Expired", "Cancelled"];
+
+const DAILY_TYPES = ["daily", "kids"];
 
 export default function MembershipsTable({ memberships, plans, currentUserRole }) {
   const router = useRouter();
@@ -33,27 +36,66 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
   const [renewPaymentMethod, setRenewPaymentMethod] = useState("cash");
   const [renewTransactionId, setRenewTransactionId] = useState("");
   const [message, setMessage] = useState(null);
+  const [receiptData, setReceiptData] = useState(null);
 
   const enriched = useMemo(() => {
     const now = new Date();
     return memberships.map((m) => {
-      const isExpired = new Date(m.endDate) < now;
+      const start = new Date(m.startDate);
+      const end = new Date(m.endDate);
       const isCancelled = m.status === "cancelled";
-      const displayStatus = isCancelled ? "cancelled" : isExpired ? "expired" : "active";
-      return { ...m, displayStatus };
+      const isExpired = !isCancelled && end < now;
+      const isUpcoming = !isCancelled && !isExpired && start > now;
+      const displayStatus = isCancelled
+        ? "cancelled"
+        : isExpired
+        ? "expired"
+        : isUpcoming
+        ? "upcoming"
+        : "active";
+
+      const isDaily = DAILY_TYPES.includes(m.plan?.type);
+
+      // Has this member since started a later membership? If so, this expired
+      // one was renewed and doesn't need follow-up — keep it out of the
+      // Expired tab, even though it still exists in the full history.
+      const supersededByRenewal =
+        displayStatus === "expired" &&
+        memberships.some(
+          (other) =>
+            other._id !== m._id &&
+            other.member?._id === m.member?._id &&
+            new Date(other.startDate) > start
+        );
+
+      return { ...m, displayStatus, supersededByRenewal, isDaily };
     });
   }, [memberships]);
 
   const filtered = useMemo(() => {
     if (activeTab === "All") return enriched;
+    if (activeTab === "Daily") {
+      return [...enriched.filter((m) => m.isDaily)].sort(
+        (a, b) => new Date(b.startDate) - new Date(a.startDate)
+      );
+    }
+    if (activeTab === "Expired") {
+      // Daily/kids passes expire every day by design — they live in the Daily
+      // tab, not here. Expired is only for lapsed memberships worth following up.
+      return enriched.filter(
+        (m) => m.displayStatus === "expired" && !m.supersededByRenewal && !m.isDaily
+      );
+    }
     return enriched.filter((m) => m.displayStatus === activeTab.toLowerCase());
   }, [enriched, activeTab]);
 
   const counts = useMemo(() => {
-    const c = { All: enriched.length, Active: 0, Expired: 0, Cancelled: 0 };
+    const c = { All: enriched.length, Active: 0, Upcoming: 0, Daily: 0, Expired: 0, Cancelled: 0 };
     for (const m of enriched) {
+      if (m.isDaily) c.Daily++;
       if (m.displayStatus === "active") c.Active++;
-      if (m.displayStatus === "expired") c.Expired++;
+      if (m.displayStatus === "upcoming") c.Upcoming++;
+      if (m.displayStatus === "expired" && !m.supersededByRenewal && !m.isDaily) c.Expired++;
       if (m.displayStatus === "cancelled") c.Cancelled++;
     }
     return c;
@@ -61,13 +103,27 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
 
   async function handleCancel(membershipId) {
     setBusyId(membershipId);
+    setMessage(null);
     try {
-      await fetch(`/api/memberships/${membershipId}`, {
+      const res = await fetch(`/api/memberships/${membershipId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled" }),
       });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage({ type: "error", text: data.message || "Couldn't cancel this membership." });
+        return;
+      }
+      setMessage({
+        type: "success",
+        text: data.refunded
+          ? "Membership cancelled. They hadn't used it, so the payment was automatically marked as refunded and removed from revenue."
+          : "Membership cancelled.",
+      });
       router.refresh();
+    } catch {
+      setMessage({ type: "error", text: "Couldn't reach the server. Try again." });
     } finally {
       setBusyId(null);
     }
@@ -78,9 +134,17 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
       return;
     }
     setBusyId(membershipId);
+    setMessage(null);
     try {
-      await fetch(`/api/memberships/${membershipId}`, { method: "DELETE" });
+      const res = await fetch(`/api/memberships/${membershipId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage({ type: "error", text: data.message || "Couldn't delete this membership." });
+        return;
+      }
       router.refresh();
+    } catch {
+      setMessage({ type: "error", text: "Couldn't reach the server. Try again." });
     } finally {
       setBusyId(null);
     }
@@ -100,6 +164,7 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
       return;
     }
     setBusyId(row._id);
+    setMessage(null);
     try {
       const res = await fetch("/api/memberships", {
         method: "POST",
@@ -118,14 +183,46 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
         return;
       }
 
+      const m = data.membership;
+      setReceiptData({
+        title: data.renewed ? "Membership renewal" : "Membership enrollment",
+        branchName: m.branch?.name || "",
+        date: data.payment.paidAt,
+        lines: [
+          { label: "Member", value: `${m.member?.firstName} ${m.member?.lastName}` },
+          { label: "Plan", value: m.plan?.name },
+          { label: "Valid from", value: new Date(m.startDate).toLocaleDateString() },
+          { label: "Valid until", value: new Date(m.endDate).toLocaleDateString() },
+        ],
+        total: data.payment.amount,
+        paymentMethod: data.payment.method,
+        transactionId: data.payment.transactionId,
+      });
+
       setRenewingId(null);
       router.refresh();
+    } catch {
+      setMessage({ type: "error", text: "Couldn't reach the server. Try again." });
     } finally {
       setBusyId(null);
     }
   }
 
-  // Plans for the same branch as this member's current membership
+  // Furthest paid-through date across all this member's active + upcoming periods
+  function paidThroughDate(memberId) {
+    const relevant = enriched.filter(
+      (r) =>
+        r.member?._id === memberId &&
+        (r.displayStatus === "active" || r.displayStatus === "upcoming")
+    );
+    if (relevant.length === 0) return null;
+    return relevant.reduce(
+      (latest, r) => (new Date(r.endDate) > latest ? new Date(r.endDate) : latest),
+      new Date(0)
+    );
+  }
+
+  // Plans for the same branch as this membership
   function plansForRow(row) {
     const branchId = row.branch?._id || row.branch;
     return plans.filter((p) => (p.branch?._id || p.branch) === branchId);
@@ -133,7 +230,7 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
 
   return (
     <div>
-      <div className="flex items-center gap-1 mb-4">
+      <div className="flex flex-wrap items-center gap-1 mb-4">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -164,7 +261,9 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
       <div className="bg-[var(--ng-surface)] border border-[var(--ng-border)] rounded-xl overflow-hidden">
         {filtered.length === 0 ? (
           <p className="text-[var(--ng-text-muted)] text-sm p-8 text-center">
-            No {activeTab !== "All" ? activeTab.toLowerCase() : ""} memberships to show.
+            {activeTab === "Daily"
+              ? "No daily or kids passes recorded yet."
+              : `No ${activeTab !== "All" ? activeTab.toLowerCase() : ""} memberships to show.`}
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -180,8 +279,11 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
             </thead>
             <tbody>
               {filtered.map((m) => {
-                const canCancel = m.displayStatus === "active";
-                const canDelete = m.displayStatus !== "active" && currentUserRole === "admin";
+                const canCancel = m.displayStatus === "active" || m.displayStatus === "upcoming";
+                const canDelete =
+                  (m.displayStatus === "expired" || m.displayStatus === "cancelled") &&
+                  currentUserRole === "admin";
+                const canRenew = m.displayStatus === "active" || m.displayStatus === "expired";
                 const isRenewing = renewingId === m._id;
 
                 return (
@@ -210,6 +312,8 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
                           className={`text-xs px-2 py-1 rounded-full ${
                             m.displayStatus === "active"
                               ? "bg-[var(--ng-accent)]/20 text-[var(--ng-accent)]"
+                              : m.displayStatus === "upcoming"
+                              ? "bg-blue-950/40 text-blue-300"
                               : "bg-red-950/40 text-red-400"
                           }`}
                         >
@@ -217,12 +321,14 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => (isRenewing ? setRenewingId(null) : openRenew(m))}
-                          className="text-xs text-[var(--ng-accent)] hover:text-[var(--ng-accent-dim)] mr-3"
-                        >
-                          {isRenewing ? "Close" : "Renew"}
-                        </button>
+                        {canRenew && (
+                          <button
+                            onClick={() => (isRenewing ? setRenewingId(null) : openRenew(m))}
+                            className="text-xs text-[var(--ng-accent)] hover:text-[var(--ng-accent-dim)] mr-3"
+                          >
+                            {isRenewing ? "Close" : "Renew"}
+                          </button>
+                        )}
                         {canCancel && (
                           <button
                             onClick={() => handleCancel(m._id)}
@@ -243,6 +349,7 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
                         )}
                       </td>
                     </tr>
+
                     {isRenewing && (
                       <tr className="border-b border-[var(--ng-border)] bg-[var(--ng-bg)]">
                         <td colSpan={6} className="px-5 py-4">
@@ -300,8 +407,12 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
                             </button>
                           </div>
                           <p className="text-xs text-[var(--ng-text-muted)] mt-2">
-                            If they still have an active membership, the new period starts when
-                            it ends — no paid days lost.
+                            {(() => {
+                              const paidThrough = paidThroughDate(m.member?._id);
+                              return paidThrough
+                                ? `Already paid through ${paidThrough.toLocaleDateString()}. This renewal will start right after that — no days lost.`
+                                : "The new period starts today since there's nothing currently active.";
+                            })()}
                           </p>
                         </td>
                       </tr>
@@ -313,6 +424,19 @@ export default function MembershipsTable({ memberships, plans, currentUserRole }
           </table>
         )}
       </div>
+
+      {receiptData && (
+        <Receipt
+          title={receiptData.title}
+          branchName={receiptData.branchName}
+          date={receiptData.date}
+          lines={receiptData.lines}
+          total={receiptData.total}
+          paymentMethod={receiptData.paymentMethod}
+          transactionId={receiptData.transactionId}
+          onClose={() => setReceiptData(null)}
+        />
+      )}
     </div>
   );
 }

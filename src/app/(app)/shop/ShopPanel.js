@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Receipt from "@/components/Receipt";
 
 const CATEGORY_LABELS = {
   drinks: "Drinks",
@@ -17,6 +18,7 @@ export default function ShopPanel({ branches, allProducts }) {
   const [transactionId, setTransactionId] = useState("");
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
 
   // Restock state
   const [restockingId, setRestockingId] = useState(null);
@@ -115,10 +117,21 @@ export default function ShopPanel({ branches, allProducts }) {
         return;
       }
 
-      setMessage({
-        type: "success",
-        text: `Sale complete — KSh ${data.sale.totalAmount.toLocaleString()}`,
+      // Build the receipt from what was actually sold
+      const branchName = branches.find((b) => b._id === branchId)?.name || "";
+      setReceiptData({
+        branchName,
+        date: data.sale.createdAt,
+        items: cartItems.map((item) => ({
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        total: data.sale.totalAmount,
+        paymentMethod,
+        transactionId,
       });
+
       setCart({});
       setTransactionId("");
       router.refresh();
@@ -321,6 +334,19 @@ export default function ShopPanel({ branches, allProducts }) {
           {loading ? "Processing..." : "Checkout"}
         </button>
       </div>
+
+      {receiptData && (
+        <Receipt
+          title="Shop purchase"
+          branchName={receiptData.branchName}
+          date={receiptData.date}
+          items={receiptData.items}
+          total={receiptData.total}
+          paymentMethod={receiptData.paymentMethod}
+          transactionId={receiptData.transactionId}
+          onClose={() => setReceiptData(null)}
+        />
+      )}
     </div>
   );
 }

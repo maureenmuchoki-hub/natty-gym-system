@@ -21,3 +21,45 @@ body {
   font-family: 'Bebas Neue', sans-serif;
   letter-spacing: 0.02em;
 }
+
+/* ---------- Receipt printing ---------- */
+@page {
+  margin: 8mm;
+}
+
+@media print {
+  /* Hide everything on the page... */
+  body * {
+    visibility: hidden;
+  }
+
+  /* ...except the receipt */
+  #receipt-print,
+  #receipt-print * {
+    visibility: visible;
+  }
+
+  #receipt-print {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: 360px;
+    padding: 0;
+    background: #fff;
+  }
+
+  /* Dark-theme colors would print invisibly on white paper — force black */
+  #receipt-print * {
+    color: #000 !important;
+    background: transparent !important;
+  }
+
+  #receipt-print .receipt-muted {
+    color: #555 !important;
+  }
+
+  #receipt-print .receipt-border {
+    border-color: #bbb !important;
+  }
+}

@@ -83,6 +83,18 @@ export async function POST(request) {
       );
     }
 
+    // A member can only be enrolled in a plan from their own registered branch
+    if (member.branch.toString() !== plan.branch.toString()) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "This plan belongs to a different branch than the one this member is registered at.",
+        },
+        { status: 400 }
+      );
+    }
+
     const now = new Date();
 
     // Smart renewal: if this member already has an active membership that hasn't
