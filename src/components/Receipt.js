@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 const METHOD_LABELS = {
   cash: "Cash",
   mpesa: "M-Pesa",
@@ -10,12 +13,16 @@ const METHOD_LABELS = {
 /**
  * Printable receipt shown in a modal.
  *
+ * It renders through a portal directly under <body> so that, when printing,
+ * the print stylesheet can hide the entire app with display:none and print
+ * ONLY the receipt, as a single page.
+ *
  * Props:
  *  - title:         e.g. "Shop purchase" or "Membership renewal"
  *  - branchName:    shown under the NATTY GYM header
  *  - date:          ISO string or Date
  *  - items:         optional [{ name, quantity, price }] for shop sales
- *  - lines:         optional [{ label, value }] for details like member / plan / period
+ *  - lines:         optional [{ label, value }] for member / plan / period details
  *  - total:         number
  *  - paymentMethod: "cash" | "mpesa" | "card" | "bank_transfer"
  *  - transactionId: optional string
@@ -32,10 +39,21 @@ export default function Receipt({
   transactionId,
   onClose,
 }) {
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-[var(--ng-surface)] border border-[var(--ng-border)] rounded-xl max-w-sm w-full max-h-[90vh] overflow-y-auto">
-        {/* ---- Printable area (everything inside #receipt-print) ---- */}
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      id="receipt-root"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+    >
+      <div className="receipt-card bg-[var(--ng-surface)] border border-[var(--ng-border)] rounded-xl max-w-sm w-full max-h-[90vh] overflow-y-auto">
+        {/* ---- Printable area ---- */}
         <div id="receipt-print" className="p-6">
           <div className="text-center mb-4">
             <p className="font-display text-2xl text-[var(--ng-accent)]">NATTY GYM</p>
@@ -103,7 +121,7 @@ export default function Receipt({
         </div>
 
         {/* ---- Controls (hidden when printing) ---- */}
-        <div className="p-4 border-t border-[var(--ng-border)] flex gap-3">
+        <div className="receipt-controls p-4 border-t border-[var(--ng-border)] flex gap-3">
           <button
             onClick={() => window.print()}
             className="flex-1 bg-[var(--ng-accent)] text-[#151511] font-semibold rounded-lg py-2.5 text-sm hover:bg-[var(--ng-accent-dim)] transition-colors"
@@ -118,6 +136,7 @@ export default function Receipt({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

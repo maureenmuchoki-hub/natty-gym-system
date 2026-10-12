@@ -28,25 +28,52 @@ body {
 }
 
 @media print {
-  /* Hide everything on the page... */
-  body * {
-    visibility: hidden;
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
   }
 
-  /* ...except the receipt */
-  #receipt-print,
-  #receipt-print * {
-    visibility: visible;
+  /* Remove the whole app from the printed page. display:none (not
+     visibility:hidden) means it takes up NO space, so nothing spills
+     onto extra pages. The receipt is rendered as a direct child of
+     <body> via a portal, so it is not affected. */
+  body > *:not(#receipt-root) {
+    display: none !important;
+  }
+
+  /* Turn the on-screen modal overlay into plain flowing content.
+     (A fixed-position element repeats on every printed page — this
+     is what caused the duplicate receipts.) */
+  #receipt-root {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  #receipt-root .receipt-card {
+    max-width: 360px !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
   }
 
   #receipt-print {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    max-width: 360px;
-    padding: 0;
-    background: #fff;
+    padding: 0 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Print / Close buttons never print */
+  #receipt-root .receipt-controls {
+    display: none !important;
   }
 
   /* Dark-theme colors would print invisibly on white paper — force black */
